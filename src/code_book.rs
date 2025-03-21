@@ -8,13 +8,12 @@ use rand_core::RngCore;
 
 use serde::{Serialize, Deserialize};
 
-use std::{fs, io, path::{Path, PathBuf}};
+use std::{fs, path::{PathBuf}};
 use std::env;
 
 use crate::mat_data::MatData;
 
 // 加密相关类型
-type CryptoError = aes_gcm::Error;
 type Cipher = Aes256Gcm;
 
 
@@ -22,8 +21,20 @@ type Cipher = Aes256Gcm;
 pub struct CodeBook{
     data : Vec<MatData>,
     key : Vec<u8>,
+    number:usize,
 }
 
+pub enum OptionType<'a>{
+    ID(usize),
+    NAME(&'a str),
+    NOTES(&'a str),
+}
+
+enum FindResult{
+    IDEM(MatData),
+    BUFF(Vec<MatData>),
+    NODATA,
+}
 
 impl CodeBook {
     const NONCE_LENGTH: usize = 12; // GCM推荐12字节nonce
@@ -33,11 +44,12 @@ impl CodeBook {
          CodeBook{
              data:Vec::new(),
              key:key.clone(),
+             number:0,
          }
     }
 
     pub fn load_or_new() ->CodeBook {
-        let key = hex::decode("aabbccddeeff00112233445566778899aabbccddeeff00112233445566778899")
+        let key = hex::decode("aabbccddeeff00112233445566778899aabbccddeeff00112233445566778899")//64字节16进制key
             .expect("hex decode error");
         let path = Self::data_path();
         match Self::load_by_path(&key,path) {
@@ -61,7 +73,8 @@ impl CodeBook {
     }
 
     pub fn add(&mut self,name:String,passwd:String,notes:String ) {
-        let data = MatData::new(name,passwd,notes);
+        self.number = self.number + 1;
+        let data = MatData::new(name,passwd,notes,self.number);
         self.data.push(data);
 
         self.save(&self.key).unwrap();
@@ -79,9 +92,16 @@ impl CodeBook {
     }
 
     pub fn showdata(&self) {
-        for item in &self.data {
-            item.showdata();
+        if self.number == 0 {
+            println!("你还没有报错过密码呦！！");
         }
+        else {
+            println!("一共有{}条密码信息，如下所示：",self.number);
+            for item in &self.data {
+                item.showdata();
+            }
+        }
+
     }
 
     // // 获取存储路径（跨平台） 暂时不使用用，该函数会返回一个标准的软件存储的数据的路径
@@ -117,10 +137,7 @@ impl CodeBook {
 
 
     pub fn load_by_path(key: &[u8],path:PathBuf) -> Result<Self> {
-        // let path = Self::data_path();
-        // println!("{}",path.display());
         println!("filepath is {}",path.display());
-        //let data = fs::read(path).context("读取文件失败")?;
         let data = fs::read(path)?;
 
         if data.len() < Self::NONCE_LENGTH { //数据长度不对，报错返回
@@ -167,6 +184,117 @@ impl CodeBook {
 
     fn extend(&mut self, data:CodeBook) {
         self.data.extend(data.data);
+    }
+
+    pub fn find(&self,buffer:OptionType) ->Result<()> {
+       let result =  match buffer {
+            OptionType::ID(id) => {
+                let data = self.find_by_id(id);
+
+                match data {
+                    Some(data) => {FindResult::IDEM(data)},
+                    None => {FindResult::NODATA},
+                }
+            },
+
+            OptionType::NAME(name) => {
+                FindResult::BUFF(self.find_by_name(&name))
+            },
+
+            OptionType::NOTES(notes) => {
+                FindResult::BUFF(self.find_by_notes(&notes))
+            },
+       };
+
+        match result {
+            FindResult::IDEM(data) => {
+                data.showdata();
+                Ok(())
+            },
+            FindResult::BUFF(data) => {
+                if data.len() == 0 {
+                    println!("非常抱歉，没有查找到数据! ");
+                    Err(anyhow::anyhow!("Error"))
+                } else {
+                    for i in data{
+                        i.showdata();
+                    }
+                    Ok(())
+                }
+            },
+            FindResult::NODATA => {
+                println!("非常抱歉，没有查找到数据！");
+                Err(anyhow::anyhow!("Error"))
+            },
+
+        }
+
+
+    }
+
+    fn find_by_id(&self,id:usize) -> Option<MatData> {
+        for item in self.data.iter() {
+            match item.comp_id(id) {
+                Some(data) => {return Some(data);},
+                None => {continue},
+            }
+        }
+
+        None
+
+    }
+
+    fn find_by_name(&self,name:&str) -> Vec<MatData> {
+        let mut buffer = Vec::new();
+        for item in self.data.iter() {
+            match item.comp_name(name) {
+                Some(data) => {buffer.push(data);},
+                None => {continue},
+            }
+        }
+        buffer
+    }
+
+    fn find_by_notes(&self,notes:&str) -> Vec<MatData> {
+        let mut buffer = Vec::new();
+        for item in self.data.iter() {
+            match item.comp_notes(notes) {
+                Some(data) => {buffer.push(data);},
+                None => {continue},
+            }
+        }
+        buffer
+    }
+
+    pub fn remove_by_id(&mut self,id:usize) -> Result<()> {
+        let index = self.find_index_by_id(id).ok_or_else(||anyhow::anyhow!("ID为{}的密码不存在",id))?;
+        self.data.remove(index);
+        self.save(&self.key).expect("save error");
+        self.number = self.number - 1;
+        Ok(())
+    }
+
+    fn find_index_by_id(&self,id:usize) -> Option<usize> {
+        self.data.iter().position(|item| item.id == id)
+    }
+
+    pub fn update_by_id(&mut self,id:usize,username:Option<String>,passwd:Option<String>,notes:Option<String>) -> Result<()> {
+        if let Some(item) = self.data.iter_mut().find(|item| item.id == id) { //这里使用可修改的迭代器 iter_mut
+            if let Some(name) = username {
+                item.update_name(name);
+            }
+            if let Some(password) = passwd {
+                item.update_passwd(password);
+            }
+            if let Some(notes) = notes {
+                item.update_notes(notes);
+            }
+
+            self.save(&self.key).expect("save error");
+            Ok(())
+        } else {
+            Err(anyhow::anyhow!("ID为{}的密码不存在",id))
+        }
     }
 
 }
