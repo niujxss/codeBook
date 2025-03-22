@@ -86,7 +86,7 @@ fn show_code_book(code_book: &CodeBook) {
 }
 
 fn menuconfig() -> u8 {
-    println!("============== 私人定制密码本 ===============");
+    println!("============== 私人定制密码本 V0.1.1===============");
     println!("= 请输入功能编号                             ");
     println!("= 1、创建一条密码                               ");
     println!("= 2、查看所有密码");

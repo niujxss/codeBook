@@ -93,7 +93,7 @@ impl CodeBook {
 
     pub fn showdata(&self) {
         if self.number == 0 {
-            println!("你还没有报错过密码呦！！");
+            println!("你还没有保存过密码呦！！");
         }
         else {
             println!("一共有{}条密码信息，如下所示：",self.number);
