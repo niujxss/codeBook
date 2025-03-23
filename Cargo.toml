@@ -1,15 +1,10 @@
 [package]
-name = "TEST01"
+name = "windows_test"
 version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-bincode = "1.3"          # 二进制序列化
-aes-gcm = { version = "0.10", features = ["std"] } # AES加密
-hex = "0.4"              # 密钥处理
-directories = "4.0"      # 跨平台目录处理
-anyhow = "1.0"           # 错误处理
-rand = "0.8"             # 随机数生成
-serde = { version = "1.0", features = ["derive"] } #序列化与反序列化
-rand_core = "0.6"
-clearscreen = "4.0.0"
+eframe = "0.25"  # 提供跨平台窗口支持
+egui = "0.25"     # GUI 核心库
+winapi = { version = "0.3", features = ["winuser", "libloaderapi", "shellapi"] }
+include_dir = "0.7"  # 用于嵌入字体文件

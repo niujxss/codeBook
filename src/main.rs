@@ -1,293 +1,130 @@
-mod code_book;
-mod mat_data;
+#![windows_subsystem = "windows"]
+use eframe::egui;
+use std::path::Path;
 
-use crate::code_book::CodeBook;
-use crate::code_book::OptionType;
-use std::env;
-use std::io::{self, Write};
-use clearscreen::clear;
+#[derive(PartialEq,Debug)]
+enum Page {
+    Main,
+    SubPage1,
+    SubPage2,
+    SubPage3,
+    SubPage4,
+}
+
+struct MyApp {
+    current_page: Page,  // 当前显示的页面
+    subpage_data: String // 二级页面数据示例
+}
+
+impl Default for MyApp {
+    fn default() -> Self {
+        Self {
+            current_page: Page::Main,
+            subpage_data: String::new(),
+        }
+    }
+}
+
+impl eframe::App for MyApp { //为 MyApp 实现 eframe::App trait,这样就能将自己的APP接入eframe框架
+                            //通过实现这个 trait，框架可以自动处理窗口事件循环、渲染调度等底层逻辑
+
+    //唯一必须实现的函数update, 作用：每帧调用一次，负责绘制界面和处理用户输入。
+    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        //参数1：应用状态，可修改
+        //参数2：EGUI 上下文，提供输入事件、绘图接口等
+        //参数3：原生窗口控制（如修改窗口标题、关闭窗口）
+
+        if self.current_page == Page::Main {
+            egui::CentralPanel::default().show( //创建一个中央面板
+                ctx,
+                |ui| { //闭包中包含了面板中添加的UI元素
+                    ui.heading("主界面"); //写了一个文本 主界面
+                    ui.separator();//添加了一个分割线
+
+                    // 添加了四个选项按钮，并描述了按钮被按下后的动作
+                    if ui.button("选项 1").clicked() {
+                        self.current_page = Page::SubPage1;
+                    }
+                    if ui.button("选项 2").clicked() {
+                        self.current_page = Page::SubPage2;
+                    }
+                    if ui.button("选项 3").clicked() {
+                        self.current_page = Page::SubPage3;
+                    }
+                    if ui.button("选项 4").clicked() {
+                        self.current_page = Page::SubPage4;
+                    }
+
+            });
+        } else {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                ui.heading(format!("二级界面 - {:?}", self.current_page));
+                ui.separator();
+
+                match self.current_page {
+                    Page::SubPage1 => {
+                        ui.label("这里是选项1的内容"); //这行代码是生产一个静态的文本显示，只读的
+                        ui.text_edit_singleline(&mut self.subpage_data); //这行代码生成一个可输入文本框；是双向的，输入的值保存在subpage_data中，另外subpage_data如果在程序中被修改，文本框中的数据也会被修改
+
+                    },
+                    Page::SubPage2 => {
+                        ui.label("这里是选项2的内容");
+                        let mut length:usize = 0;
+                        ui.add(egui::Slider::new(         //这里创建了一个滑块
+                            &mut length,
+                            0..=100 //滑块长度0到100
+                        ));
+                        ui.label(format!("Length: {}", length));
+                    },
+                    _ =>{
+                        ui.label(format!("通用内容区域: {}", self.subpage_data));
+                    },
+                }
+            });
+
+            //TopBottomPanel 创建头部或尾部面板
+            //TopBottomPanel::bottom 指明创建尾部面板
+            egui::TopBottomPanel::bottom("bottom_panel").show(ctx,|ui| {
+                ui.horizontal(|ui| { //水平布局
+                    if ui.button("← 返回主界面").clicked() {
+                        self.current_page = Page::Main;
+                        self.subpage_data.clear(); // 清除临时数据
+                    }
+                });
+            });
+        }
+
+    }
+}
 
 
 fn main() {
-    println!("Hello, 欢迎使用本工具");
+    let options = eframe::NativeOptions::default(); //生产一个默认的窗口配置参数
+    eframe::run_native(
+        "GUI界面例子", //窗口名称
+        options,// 传入窗口默认配置参数
+        Box::new(|cc| {
+            let mut fonts = egui::FontDefinitions::default();
+            #[cfg(target_os = "windows")]
+            let font_path = "C:/Windows/Fonts/msyh.ttc"; // 微软雅黑
 
-    let mut codeboot = code_book::CodeBook::load_or_new();
-
-    loop {
-        let input = menuconfig();
-        match input {
-            1 => {
-                insert_data(&mut codeboot);
-            },
-            2 => {
-                show_code_book(&codeboot);
-            },
-            3 => {
-
-                add_file(&mut codeboot);
-            },
-            4 => {
-
-                find_book(&codeboot);
-            },
-            5 => {
-                change_boot(&mut codeboot);
-            },
-            _ => {
-                println!("ByeBye!!");
-                break;
-            },
-        }
-    }
-
-}
-
-fn add_file(codebook:&mut CodeBook) {
-    let mut filepath = String::new();
-    let current_dir = env::current_dir().expect("无法获取当前目录");
-    println!("当前工作目录: {:?}", current_dir);
-    println!("请输入相对路径下的文件名（后缀名为.ck）：");
-
-    io::stdin().read_line(&mut filepath).expect("读取输入的数据错误");
-
-    let filename = filepath.trim().to_string();
-
-    if filename.ends_with(".ck") {
-
-        let filepath = current_dir.join(&filename);
-        codebook.add_from_file(filepath);
-
-    } else {
-        println!("文件名格式不正确")
-    }
-
-}
-
-fn insert_data(code_book: &mut CodeBook) {
-    let mut name = String::new();
-    let mut password = String::new();
-
-    println!("请输入用户名：");
-    io::stdin().read_line(&mut name).expect("读取输入的数据错误");
-
-    println!("请输入密码：");
-    io::stdin().read_line(&mut password).expect("读取输入的数据错误");
-
-    let mut notes = String::new();
-    println!("请输入备注信息");
-    io::stdin().read_line(&mut notes).expect("读取输入的数据错误");
-
-    code_book.add(name, password, notes);
-
-}
-
-fn show_code_book(code_book: &CodeBook) {
-    code_book.showdata();
-}
-
-fn menuconfig() -> u8 {
-    println!("============== 私人定制密码本 V0.1.1===============");
-    println!("= 请输入功能编号                             ");
-    println!("= 1、创建一条密码                               ");
-    println!("= 2、查看所有密码");
-    println!("= 3、导入密码本");
-    println!("= 4、查找密码");
-    println!("= 5、修改密码本");
-    println!("= 输入其他数据退出");
-    let mut inputstr = String::new();
-    io::stdin().read_line(&mut inputstr).expect("Failed to read line");
-
-    let input:u8 = match inputstr.trim().parse() {
-        Ok(num) => {
-            num
-        },
-        Err(_) => {
-            println!("退出");
-            0
-        },
-    };
-    return input;
-}
-
-fn find_book(code_book: &CodeBook) {
-    clear().expect("无法清空屏幕");
-    println!("请选择查找的方式：");
-    println!("1. 通过ID查找");
-    println!("2. 通过名字查找");
-    println!("3. 通过note查找");
-    let mut inputstr = String::new();
-    io::stdin().read_line(&mut inputstr).expect("Failed to read line");
-    let input:u8 = match inputstr.trim().parse() {
-        Ok(num) => {
-            num
-        },
-        Err(_) => {return}
-    };
-
-    match input {
-        1 => {
-            println!("请输入ID：");
-            let mut inputstr = String::new();
-            io::stdin().read_line(&mut inputstr).expect("Failed to read line");
-            let input:usize = match inputstr.trim().parse() {
-                Ok(num) => {
-                    num
-                },
-                Err(_) => {println!("输入的编号异常");return}
-            };
-            code_book.find(OptionType::ID(input)).unwrap();
-        },
-        2 => {
-            println!("请输入要查询的数据：");
-            let mut inputstr = String::new();
-            io::stdin().read_line(&mut inputstr).expect("Failed to read line");
-            let input = inputstr.trim();
-            code_book.find(OptionType::NAME(input)).unwrap();
-        },
-        3 => {
-            println!("请输入要查询的数据：");
-            let mut inputstr = String::new();
-            io::stdin().read_line(&mut inputstr).expect("Failed to read line");
-            let input = inputstr.trim();
-            code_book.find(OptionType::NOTES(input)).unwrap();
-        },
-        _ => {
-            println!("输入错误!!");
-        }
-    }
-
-}
-
-fn change_boot(code_book: &mut CodeBook) {
-    clear().expect("无法清空屏幕");
-    println!("请选择操作方式：");
-    println!("1. 根据ID删除密码");
-    println!("2. 根据ID修改密码参数");
-    let mut inputstr = String::new();
-    io::stdin().read_line(&mut inputstr).expect("Failed to read line");
-    let input:u8 = match inputstr.trim().parse() {
-        Ok(num) => {
-            num
-        },
-        Err(_) => {return}
-    };
-    match input {
-        1 => {
-            change_boot_rm(code_book);
-        },
-        2 => {
-            change_boot_changedata(code_book);
-            },
-        _ => {
-            println!("输入错误");
-        }
-    }
-}
-
-fn change_boot_rm(code_book: & mut CodeBook){
-    println!("请输入ID：");
-    let mut inputstr = String::new();
-    io::stdin().read_line(&mut inputstr).expect("Failed to read line");
-    let input:usize = match inputstr.trim().parse() {
-        Ok(num) => {
-            num
-        },
-        Err(_) => {return}
-    };
-
-    let ret = code_book.remove_by_id(input);
-
-    match ret {
-        Ok(_) => {println!("删除成功")},
-        Err(_) => {println!("删除失败");}
-    }
-}
-
-fn change_boot_changedata(code_book: & mut CodeBook){
-    println!("请输入ID：");
-    let mut inputstr = String::new();
-    io::stdin().read_line(&mut inputstr).expect("Failed to read line");
-    let inputid:usize = match inputstr.trim().parse() {
-        Ok(num) => {
-            num
-        },
-        Err(_) => {return}
-    };
-
-    let ret = code_book.find(OptionType::ID(inputid));
-
-    match ret {
-        Ok(_) => {
-
-            let name : Option<String> ;
-            let passwd : Option<String> ;
-            let note : Option<String> ;
-
-            let ret = get_yes_no("是否修改用户名？").unwrap();
-            if ret {
-
-                let input_name = get_input_message("请输入新用户名").unwrap();
-                name = Some(input_name);
+            // 检查字体是否存在
+            if Path::new(font_path).exists() {
+                fonts.font_data.insert(
+                    "SystemFont".to_owned(),
+                    egui::FontData::from_owned(std::fs::read(font_path).unwrap())
+                );
+                // 设置为默认字体
+                fonts.families.get_mut(&egui::FontFamily::Proportional).unwrap()
+                    .insert(0, "SystemFont".to_owned());
             } else {
-                name = None;
+                eprintln!("系统字体未找到，请安装中文字体！");
             }
 
-            let ret = get_yes_no("是否修改密码？").unwrap();
-            if ret {
-                let input_passwd = get_input_message("请输入新密码").unwrap();
-                passwd = Some(input_passwd);
-            } else {
-                passwd = None;
-            }
+            cc.egui_ctx.set_fonts(fonts);
 
-            let ret = get_yes_no("是否修改备注？").unwrap();
-            if ret {
-                let input_note = get_input_message("请输入新备注").unwrap();
-                note = Some(input_note);
-            } else {
-                note = None;
-            }
-
-            let ret = code_book.update_by_id(inputid,name,passwd,note);
-
-            match ret {
-                Ok(_) => {println!("修改成功！！")},
-                Err(_) => {println!("修改失败!!!")},
-            }
-
-        },
-        Err(_) => {println!("ID异常，无法进行修改")}
-    }
-
-
-}
-
-fn get_yes_no(message:&str) ->Result<bool,()> {
-    let mut input = String::new();
-    loop {
-        print!("{}[y/n]: ", message);
-        io::stdout().flush().unwrap();
-
-        input.clear();
-        io::stdin().read_line(&mut input).expect("Failed to read line");
-        let normalized = input.trim().to_lowercase();
-        match normalized.as_str() {
-            ""|"y" | "yes" => { return Ok(true)},
-            "n" | "no" => { return Ok(false)},
-            _ => {println!("无效输入，请重新输入y/n");continue;}
+            Box::new(MyApp::default())
         }
-    }
+        ),//应用程序实例,使用闭包_cc里可以配置一些初始化参数，例如字体等
+    ).unwrap(); //运行 GUI
 }
-
-fn get_input_message(message:&str) ->Result<String,()> {
-    let mut input = String::new();
-
-        print!("{}: ", message);
-        io::stdout().flush().unwrap();
-
-        input.clear();
-        io::stdin().read_line(&mut input).expect("Failed to read line");
-        let normalized = input.trim().to_lowercase();
-        Ok(normalized)
-}
-
