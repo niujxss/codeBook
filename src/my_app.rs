@@ -6,7 +6,8 @@ use crate::code_book::OptionType;
 use lazy_static::lazy_static;
 use parking_lot::Mutex;
 use log::{Log, LevelFilter, info};
-use std::sync::Arc;
+
+use rfd::FileDialog;
 
 // --- 全局日志缓冲区 ---
 lazy_static! {
@@ -44,8 +45,8 @@ enum Page {
 pub struct MyApp {
     current_page: Page,  // 当前显示的页面
     codebook: CodeBook,
-    show_logs: bool,
     sub_page1data: SubPage1Data,
+    sub_page3data: SubPage3Data,
     sub_page4_1data: SubPage4_1Data,
     sub_page4_2data: SubPage4_2Data,
     sub_page4_3data: SubPage4_3Data,
@@ -53,6 +54,9 @@ pub struct MyApp {
     sub_page5_2data: SubPage5_2Data,
 }
 
+struct SubPage3Data{
+    filepath:String,
+}
 struct SubPage1Data {
     input_name :String,
     input_passwd:String,
@@ -80,6 +84,14 @@ struct SubPage5_2Data {
     input_passwd_status:bool,
     input_notes_status:bool,
 
+}
+
+impl SubPage3Data {
+    fn new() -> Self{
+        Self{
+            filepath:String::new(),
+        }
+    }
 }
 
 impl SubPage5_2Data {
@@ -148,8 +160,8 @@ impl Default for MyApp {
         Self {
             current_page: Page::Main,
             codebook: CodeBook::load_or_new(),
-            show_logs: true,
             sub_page1data: SubPage1Data::new(),
+            sub_page3data: SubPage3Data::new(),
             sub_page4_1data: SubPage4_1Data::new(),
             sub_page4_2data: SubPage4_2Data::new(),
             sub_page4_3data: SubPage4_3Data::new(),
@@ -171,7 +183,7 @@ impl eframe::App for MyApp { //为 MyApp 实现 eframe::App trait,这样就能�
         match self.current_page {
             Page::Main => {
                 egui::CentralPanel::default().show(ctx,|ui|{
-                    ui.heading("主界面");
+                    ui.heading("密码本 S1.0.0");
                     ui.separator();
 
                     // 添加了四个选项按钮，并描述了按钮被按下后的动作
@@ -207,9 +219,9 @@ impl eframe::App for MyApp { //为 MyApp 实现 eframe::App trait,这样就能�
                     ui.text_edit_singleline(&mut self.sub_page1data.input_notes);
 
                     if ui.button("确定").clicked() {
-                        self.codebook.add(self.sub_page1data.input_passwd.clone(),
-                                          self.sub_page1data.input_notes.clone(),
-                                          self.sub_page1data.input_name.clone());
+                        self.codebook.add(self.sub_page1data.input_name.clone(),
+                                          self.sub_page1data.input_passwd.clone(),
+                                          self.sub_page1data.input_notes.clone());
 
                         self.sub_page1data.input_passwd.clear();
                         self.sub_page1data.input_notes.clear();
@@ -224,7 +236,31 @@ impl eframe::App for MyApp { //为 MyApp 实现 eframe::App trait,这样就能�
                 self.current_page = Page::MessagePage;
             },
             Page::SubPage3 => {
+                egui::CentralPanel::default().show(ctx,|ui|{
+                    ui.heading("导入密码本数据");
+                    ui.separator();
 
+                    if ui.button("选择.ck文件").clicked() {
+                        let file = FileDialog::new()
+                            .add_filter("密码本文件",&["ck"])//会自动过滤，只显示.ck结尾的文件
+                            .pick_file(); //只能选一个文件
+
+                        let ret = file.map(|path| (path.display().to_string(),path));
+
+                        if let Some((path,pathbuf)) = &ret {
+                            info!("导入的密码本为：{}",path);
+                            self.sub_page3data.filepath = path.clone();
+                            self.codebook.add_from_file(pathbuf.clone());
+
+                        } else {
+                            info!("选择文件错误");
+
+                        }
+
+                        self.current_page = Page::MessagePage;
+                        self.sub_page3data.filepath.clear();
+                    }
+                });
             },
             Page::SubPage4 => {
                 egui::CentralPanel::default().show(ctx,|ui| {
@@ -290,7 +326,7 @@ impl eframe::App for MyApp { //为 MyApp 实现 eframe::App trait,这样就能�
 
                     if self.sub_page4_3data.input_notes.len() != 0 {
                         if ui.button("确认").clicked(){
-                            self.codebook.find(OptionType::NAME(
+                            self.codebook.find(OptionType::NOTES(
                                 self.sub_page4_3data.input_notes.as_str()
                             ));
                             self.current_page = Page::MessagePage;
@@ -439,7 +475,7 @@ fn egui_input_number(ui: &mut egui::Ui,pagedata:&mut SubPage4_1Data) {
         let filtered = pagedata.input_id_str
             .chars()//这个会返回一个迭代器，按unicode字符遍历字符串，自动进行字符边界切割
             .enumerate() //获取字符及其位置索引（index,value）元组
-            .filter(|(i,c)| { //进行过滤
+            .filter(|(_i,c)| { //进行过滤
                 c.is_ascii_digit() //过滤数字
             })
             .map(|(_,c)|{c}) //将元组再打包，不要index，只要数据

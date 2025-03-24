@@ -14,7 +14,7 @@ use crate::my_app::MyApp;
 fn main() {
     let options = eframe::NativeOptions::default(); //生产一个默认的窗口配置参数
     eframe::run_native(
-        "GUI界面例子", //窗口名称
+        "密码本", //窗口名称
         options,// 传入窗口默认配置参数
         Box::new(|cc| {
             let mut fonts = egui::FontDefinitions::default();

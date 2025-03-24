@@ -141,7 +141,7 @@ impl CodeBook {
 
 
     pub fn load_by_path(key: &[u8],path:PathBuf) -> Result<Self> {
-        debug!("filepath is {}",path.display());
+        debug!("导入的文件为 {}",path.display());
         let data = fs::read(path)?;
 
         if data.len() < Self::NONCE_LENGTH { //数据长度不对，报错返回
@@ -187,7 +187,18 @@ impl CodeBook {
     }
 
     fn extend(&mut self, data:CodeBook) {
-        self.data.extend(data.data);
+        let mut bak_codebook = data;
+        let mut lens = self.index;
+
+        for idex in bak_codebook.data.iter_mut() {
+            lens = lens + 1;
+            idex.id = lens;
+        }
+        self.index = lens;
+        self.number = self.number + bak_codebook.number;
+        self.data.extend(bak_codebook.data);
+
+        info!("导入成功！！");
     }
 
     pub fn find(&self,buffer:OptionType)  {
