@@ -22,6 +22,7 @@ pub struct CodeBook{
     data : Vec<MatData>,
     key : Vec<u8>,
     number:usize,
+    index:usize, //记录所有的密码编号
 }
 
 pub enum OptionType<'a>{
@@ -45,6 +46,7 @@ impl CodeBook {
              data:Vec::new(),
              key:key.clone(),
              number:0,
+             index:0,
          }
     }
 
@@ -74,7 +76,8 @@ impl CodeBook {
 
     pub fn add(&mut self,name:String,passwd:String,notes:String ) {
         self.number = self.number + 1;
-        let data = MatData::new(name,passwd,notes,self.number);
+        self.index = self.index + 1;
+        let data = MatData::new(name,passwd,notes,self.index);
         self.data.push(data);
 
         self.save(&self.key).unwrap();
@@ -187,9 +190,10 @@ impl CodeBook {
         self.data.extend(data.data);
     }
 
-    pub fn find(&self,buffer:OptionType) ->Result<()> {
+    pub fn find(&self,buffer:OptionType)  {
        let result =  match buffer {
             OptionType::ID(id) => {
+                info!("正在查找ID为 {} 的密码数据",id);
                 let data = self.find_by_id(id);
 
                 match data {
@@ -199,10 +203,12 @@ impl CodeBook {
             },
 
             OptionType::NAME(name) => {
+                info!("正在查找名字包含 {} 的数据",name);
                 FindResult::BUFF(self.find_by_name(&name))
             },
 
             OptionType::NOTES(notes) => {
+                info!("正在查找备注包含 {} 的数据",notes);
                 FindResult::BUFF(self.find_by_notes(&notes))
             },
        };
@@ -210,22 +216,19 @@ impl CodeBook {
         match result {
             FindResult::IDEM(data) => {
                 data.showdata();
-                Ok(())
             },
             FindResult::BUFF(data) => {
                 if data.len() == 0 {
                     info!("非常抱歉，没有查找到数据! ");
-                    Err(anyhow::anyhow!("Error"))
                 } else {
                     for i in data{
                         i.showdata();
                     }
-                    Ok(())
+
                 }
             },
             FindResult::NODATA => {
                 info!("非常抱歉，没有查找到数据！");
-                Err(anyhow::anyhow!("Error"))
             },
 
         }
@@ -267,12 +270,22 @@ impl CodeBook {
         buffer
     }
 
-    pub fn remove_by_id(&mut self,id:usize) -> Result<()> {
-        let index = self.find_index_by_id(id).ok_or_else(||anyhow::anyhow!("ID为{}的密码不存在",id))?;
-        self.data.remove(index);
-        self.save(&self.key).expect("save error");
-        self.number = self.number - 1;
-        Ok(())
+    pub fn remove_by_id(&mut self,id:usize)  {
+        info!("开始删除ID为{}的数据",id);
+        let index = self.find_index_by_id(id).ok_or_else(|
+        |anyhow::anyhow!("ID为{}的密码不存在",id));
+        match index {
+            Ok(index) => {
+                self.data.remove(index);
+                self.save(&self.key).expect("save error");
+                self.number = self.number - 1;
+                info!("删除成功！！")
+            },
+            Err(_) => {
+              info!("删除失败，未查找到id为{}的数据",id);
+            },
+        }
+
     }
 
     fn find_index_by_id(&self,id:usize) -> Option<usize> {
@@ -280,18 +293,31 @@ impl CodeBook {
     }
 
     pub fn update_by_id(&mut self,id:usize,username:Option<String>,passwd:Option<String>,notes:Option<String>) -> Result<()> {
+
+        if username == None && passwd == None && notes == None {
+            return Err(anyhow::anyhow!("未输入任何参数！！"));
+        }
+        info!("开始修改密码！！");
+
+
         if let Some(item) = self.data.iter_mut().find(|item| item.id == id) { //这里使用可修改的迭代器 iter_mut
             if let Some(name) = username {
+                info!("用户名修改为：{}",name);
                 item.update_name(name);
             }
             if let Some(password) = passwd {
+                info!("密码修改为{}",password);
                 item.update_passwd(password);
             }
             if let Some(notes) = notes {
+                info!("备注修改为{}",notes);
                 item.update_notes(notes);
             }
 
+            info!("修改成功!!,修改后的数据为：");
+            item.showdata();
             self.save(&self.key).expect("save error");
+
             Ok(())
         } else {
             Err(anyhow::anyhow!("ID为{}的密码不存在",id))
